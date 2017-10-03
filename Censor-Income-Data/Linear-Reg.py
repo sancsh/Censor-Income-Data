@@ -1,8 +1,9 @@
 import pandas as pd
-import numpy as np
 import tensorflow as tf
 import tempfile as tmp
 import urllib
+import tensorflow.contrib.learn as learn
+
 
 from tensorflow.contrib.slim.python.slim.learning import train
 
@@ -29,6 +30,7 @@ def input_fn(data_file, num_epochs, shuffle):
     labels = df_data['income_bracket'].apply(lambda x: ">50k" in x).astype(int)
 
     return tf.estimator.inputs.pandas_input_fn(x=df_data, y=labels, batch_size=100, num_epochs=num_epochs,shuffle=shuffle, num_threads=5)
+
 
 """Creating categorical columns"""
 occupation = tf.feature_column.categorical_column_with_vocabulary_list(
@@ -72,9 +74,10 @@ capital_loss = tf.feature_column.numeric_column('capital_loss')
 hours_per_week = tf.feature_column.numeric_column('hours_per_week')
 
 """ Creating buckets and crossed columns """
-age_buckets = tf.feature_column.bucketized_column(age, boundaries = [18,25,35,45,55,65])
+age_buckets = tf.feature_column.bucketized_column(age, boundaries=[18, 25, 35, 45, 55, 65])
 education_x_occupation = tf.feature_column.crossed_column(["education", "occupation"], hash_bucket_size=1000)
-age_x_education_x_occupation = tf.feature_column.crossed_column([age_buckets, "education","occupation"], hash_bucket_size=1000)
+age_x_education_x_occupation = tf.feature_column.crossed_column([age_buckets, "education","occupation"],
+                                                                hash_bucket_size=1000)
 
 """ Defining the Logistic Regression Model"""
 
@@ -84,10 +87,21 @@ crossed_columns = [education_x_occupation, age_x_education_x_occupation,
                    tf.feature_column.crossed_column(["native_country", "occupation"], hash_bucket_size=1000)]
 
 model_dir = tmp.mkdtemp()
-m = tf.pyth
 
-""" Training the logisitic classifier"""
-m.train(
-    input_fn= input_fn(train_file.name,num_epochs=None, shuffle=True),
-    steps =500)
 
+
+estimator = learn.LinearClassifier(model_dir=model_dir, feature_columns = base_columns + crossed_columns, optimizer=tf.train.FtrlOptimizer(
+    learning_rate= 0.1,
+    l1_regularization_strength= 1.0,
+    l2_regularization_strength= 1.0))
+
+
+""" Training the logistic classifier"""
+estimator.fit(
+    input_fn=input_fn(train_file.name,num_epochs=None, shuffle=True))
+
+results = estimator.evaluate(
+    input_fn= input_fn(test_file.name,num_epochs=1, shuffle=False))
+print("model directory = %s" % model_dir)
+for key in sorted(results):
+  print("%s: %s" % (key, results[key]))
