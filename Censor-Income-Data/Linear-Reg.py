@@ -58,3 +58,9 @@ education_num = tf.feature_column.numeric_column('education_num')
 capital_gain = tf.feature_column.numeric_column('capital_gain')
 capital_loss = tf.feature_column.numeric_column('capital_loss')
 hours_per_week = tf.feature_column.numeric_column('hours_per_week')
+
+age_buckets = tf.feature_column.bucketized_column(age, boundaries = [18,25,35,45,55,65])
+education_x_occupation = tf.feature_column.crossed_column(["education", "occupation"], hash_bucket_size=1000)
+age_x_education_x_occupation = tf.feature_column.crossed_column([age_buckets, "education","occupation"], hash_bucket_size=1000)
+
+
