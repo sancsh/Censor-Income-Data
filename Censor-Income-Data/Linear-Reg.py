@@ -1,17 +1,13 @@
 import pandas as pd
 import tensorflow as tf
 import tempfile as tmp
-import urllib
-import tensorflow.contrib.learn as learn
-
-
-from tensorflow.contrib.slim.python.slim.learning import train
+import urllib.request as url
 
 
 train_file = tmp.NamedTemporaryFile()
 test_file = tmp.NamedTemporaryFile()
-urllib.urlretrieve("https://archive.ics.uci.edu/ml/machine-learning-databases/adult/adult.data", train_file.name)
-urllib.urlretrieve("https://archive.ics.uci.edu/ml/machine-learning-databases/adult/adult.test", test_file.name)
+url.urlretrieve("http://archive.ics.uci.edu/ml/machine-learning-databases/adult/adult.data", train_file.name)
+url.urlretrieve("http://archive.ics.uci.edu/ml/machine-learning-databases/adult/adult.test", test_file.name)
 
 CSV_COLUMNS = [
     "age", "workclass", "fnlwgt", "education", "education_num",
@@ -20,16 +16,29 @@ CSV_COLUMNS = [
     "income_bracket"]
 
 df_train = pd.read_csv(train_file.name, names = CSV_COLUMNS, skipinitialspace= True)
-df_test = pd.read_csv(test_file.name, names = CSV_COLUMNS, skipinitialspace= True)
+df_test = pd.read_csv(test_file.name, names = CSV_COLUMNS, skipinitialspace= True, skiprows=1)
 
 
+train_labels = (df_train["income_bracket"].apply(lambda x: ">50K" in x)).astype(int)
+test_labels = (df_test["income_bracket"].apply(lambda x: ">50K" in x)).astype(int)
+
+print("printing dtypes of train")
+print(df_train.dtypes)
+
+
+print("printing dtypes of test")
+print(df_test.dtypes)
+
+"""Input builder function"""
 def input_fn(data_file, num_epochs, shuffle):
-    """ Input builder function """
+
     df_data = pd.read_csv(data_file, names=CSV_COLUMNS, skipinitialspace= True)
     df_data = df_data.dropna(how='any', axis=0)
+
     labels = df_data['income_bracket'].apply(lambda x: ">50k" in x).astype(int)
 
-    return tf.estimator.inputs.pandas_input_fn(x=df_data, y=labels, batch_size=100, num_epochs=num_epochs,shuffle=shuffle, num_threads=5)
+    return tf.estimator.inputs.pandas_input_fn(x=df_data, y=labels, batch_size=100,
+                                               num_epochs=num_epochs,shuffle=shuffle, num_threads=5)
 
 
 """Creating categorical columns"""
@@ -61,7 +70,8 @@ workclass = tf.feature_column.categorical_column_with_vocabulary_list(
         "Local-gov", "?", "Self-emp-inc", "Without-pay", "Never-worked"
     ])
 
-education = tf.feature_column.categorical_column_with_vocabulary_list("education", ["Bachelors", "HS-grad", "11th", "Masters", "9th", "Some-college", "Assoc-acdm", "Assoc-voc", "7th-8th","Doctorate", "Prof-school", "5th-6th", "10th", "1st-4th","Preschool", "12th"])
+education = tf.feature_column.categorical_column_with_vocabulary_list("education",
+        ["Bachelors", "HS-grad", "11th", "Masters", "9th", "Some-college", "Assoc-acdm", "Assoc-voc", "7th-8th","Doctorate", "Prof-school", "5th-6th", "10th", "1st-4th","Preschool", "12th"])
 
 native_country = tf.feature_column.categorical_column_with_hash_bucket(
     "native_country", hash_bucket_size=1000)
@@ -74,7 +84,7 @@ capital_loss = tf.feature_column.numeric_column('capital_loss')
 hours_per_week = tf.feature_column.numeric_column('hours_per_week')
 
 """ Creating buckets and crossed columns """
-age_buckets = tf.feature_column.bucketized_column(age, boundaries=[18, 25, 35, 45, 55, 65])
+age_buckets = tf.feature_column.bucketized_column(age, boundaries=[18, 25, 30, 35, 40, 45, 50, 55, 60, 65])
 education_x_occupation = tf.feature_column.crossed_column(["education", "occupation"], hash_bucket_size=1000)
 age_x_education_x_occupation = tf.feature_column.crossed_column([age_buckets, "education","occupation"],
                                                                 hash_bucket_size=1000)
@@ -88,20 +98,25 @@ crossed_columns = [education_x_occupation, age_x_education_x_occupation,
 
 model_dir = tmp.mkdtemp()
 
+print("hello im in")
 
-
-estimator = learn.LinearClassifier(model_dir=model_dir, feature_columns = base_columns + crossed_columns, optimizer=tf.train.FtrlOptimizer(
-    learning_rate= 0.1,
+m =tf.estimator.LinearClassifier(model_dir=model_dir, feature_columns = base_columns + crossed_columns,
+     optimizer=tf.train.FtrlOptimizer(
+    learning_rate= 0.001,
     l1_regularization_strength= 1.0,
     l2_regularization_strength= 1.0))
 
+print("finished with model")
 
 """ Training the logistic classifier"""
-estimator.fit(
-    input_fn=input_fn(train_file.name,num_epochs=None, shuffle=True))
+m.train(
+    input_fn=input_fn(train_file,num_epochs=None, shuffle=True), steps=100)
 
-results = estimator.evaluate(
-    input_fn= input_fn(test_file.name,num_epochs=1, shuffle=False))
+print("finished training")
+
+results = m.evaluate(
+    input_fn=input_fn(test_file, num_epochs=1, shuffle=False),steps=None)
+
 print("model directory = %s" % model_dir)
 for key in sorted(results):
   print("%s: %s" % (key, results[key]))
